@@ -1,0 +1,101 @@
+---
+- hosts: all
+  become: yes 
+  vars:
+    home: "{{ lookup('env', 'HOME' )}}"
+    ubuntu: "https://repo.zabbix.com/zabbix/6.2/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.2-2%2Bubuntu"
+    pkg: "zabbix-release_6.2-2+ubuntu{{ ansible_distribution_version }}_all.deb"
+
+  tasks:  
+  - block: 
+      - name: Update cache Ubuntu
+        apt:
+          update_cache=yes
+          cache_valid_time=3600
+          
+      - name: Install zabbix agent 
+        apt:
+          name=zabbix-agent
+          state=latest
+
+      - name: Create zabbix conf directory
+        file: path=/etc/zabbix/zabbix_agentd.d state=directory
+
+      - name: Zabbix common  UserParam Conf
+        template:
+          src: "{{ home  + '/ansible/template/zabbix/zabbix_default.j2'}}"
+          dest: "/etc/zabbix/zabbix_agentd.conf.d/agentd.conf"
+        notify: restart zabbix-agent
+    
+    when: ansible_distribution_version < '18.04'
+ 
+  - block: # for Ubuntu > 16
+      
+    - name: remove zabbix agent1
+      apt:
+        name: zabbix-agent
+        state: absent
+    - name: update cache
+      apt:
+        update_cache=yes
+        cache_valid_time=3600
+    
+    - name: print url
+      debug:
+        msg: "{{ ubuntu }}{{ ansible_distribution_version }}_all.deb"
+    
+    - name: printe test
+      debug:
+        msg: "/home/{{ ansible_user }}/zabbix2/{{ pkg }}"
+
+    - name: Create zabbix conf directory
+      file: path=/home/adminserv/zabbix2 state=directory
+
+    - name: download agent deb
+      get_url:
+        url: "{{ ubuntu }}{{ ansible_distribution_version }}_all.deb" 
+        dest: "/home/{{ ansible_user }}/zabbix2/{{ pkg }}"
+          
+    
+    - name: add zabbix agent2
+      apt:
+        deb: "/home/{{ ansible_user }}/zabbix2/{{ pkg }}"
+        update_cache: yes
+        cache_valid_time: 3600
+    
+    - name: install 
+      apt:
+        name: zabbix-agent2
+        state: latest
+
+        
+    - name: Create zabbix conf directory
+      file: path=/etc/zabbix/zabbix_agentd2.d state=directory
+        
+      
+    - name: Zabbix common  UserParam Conf
+      template:
+        src: "{{ home }}/ansible/template/zabbix/zabbix_default.j2"
+        dest: "/etc/zabbix/zabbix_agent2.conf"
+      notify: restart zabbix-agent2
+    
+    when: ansible_distribution_version > '16.04'
+      
+  post_tasks:
+
+    - name: Check started Zabbix Agent2 Daemon
+      service: name=zabbix-agent2 state=started
+      when: ansible_distribution_version > '16.04'
+       
+    - name: Check started Zabbix Agent Daemon
+      service: name=zabbix-agent state=started
+
+      when: ansible_distribution_version < '18.04'
+       
+  handlers:
+      
+    - name: restart zabbix-agent
+      service: name=zabbix-agent state=restarted enabled=yes 
+
+    - name: restart zabbix-agent2
+      service: name=zabbix-agent2 state=restarted enabled=yes 
